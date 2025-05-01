@@ -12,13 +12,15 @@ LAN_INTERFACE=$(ip route show default | awk '/default/ {print $5}') # 默认网�
 MODE=$(grep -E '^MODE=' /etc/sing-box/mode.conf | sed 's/^MODE=//')
 
 # ======================
-# 清理函数定义（按防火墙类型分开）
+# 清理函数（兼容 TProxy 模式规则）
 # ======================
 
 clear_nft_rules() {
     nft list table inet sing-box >/dev/null 2>&1 && nft delete table inet sing-box
     ip rule del fwmark $PROXY_FWMARK lookup $PROXY_ROUTE_TABLE 2>/dev/null
     ip route del local default dev "$TUN_INTERFACE" table $PROXY_ROUTE_TABLE 2>/dev/null
+    iptables -t mangle -F PREROUTING 2>/dev/null
+    iptables -t mangle -F OUTPUT 2>/dev/null
     echo "🧹 已清理 nftables 的旧规则"
 }
 
@@ -30,6 +32,8 @@ clear_iptables_rules() {
     iptables -t nat -D POSTROUTING -o "$TUN_INTERFACE" -j MASQUERADE 2>/dev/null
     ip rule del fwmark $PROXY_FWMARK lookup $PROXY_ROUTE_TABLE 2>/dev/null
     ip route del local default dev "$TUN_INTERFACE" table $PROXY_ROUTE_TABLE 2>/dev/null
+    iptables -t mangle -F PREROUTING 2>/dev/null
+    iptables -t mangle -F OUTPUT 2>/dev/null
     echo "🧹 已清理 iptables 的旧规则"
 }
 
@@ -52,11 +56,16 @@ table inet sing-box {
 }
 EOF
     nft -f /tmp/singbox-nft.conf
-    nft list ruleset > /etc/nftables.conf
+    nft list ruleset > /etc/nftables/tun.conf
     echo "✅ 已应用 nftables 规则"
 }
 
 setup_iptables_rules() {
+    # 启用 IP 转发
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf 2>/dev/null || true
+    sysctl -p > /dev/null
+
     # 创建自定义链并设置流量标记
     iptables -t mangle -N SINGBOX 2>/dev/null
     iptables -t mangle -A PREROUTING -i "$LAN_INTERFACE" -j SINGBOX
@@ -82,11 +91,11 @@ setup_iptables_rules() {
 }
 
 # ======================
-# 路由表设置通用函数
+# 路由表设置函数（避免重复添加）
 # ======================
 setup_route_table() {
-    ip rule add fwmark $PROXY_FWMARK lookup $PROXY_ROUTE_TABLE
-    ip route add local default dev "$TUN_INTERFACE" table $PROXY_ROUTE_TABLE
+    ip rule show | grep -q "fwmark $PROXY_FWMARK" || ip rule add fwmark $PROXY_FWMARK lookup $PROXY_ROUTE_TABLE
+    ip route show table $PROXY_ROUTE_TABLE | grep -q "default" || ip route add local default dev "$TUN_INTERFACE" table $PROXY_ROUTE_TABLE
     echo "✅ 自定义路由表已配置"
 }
 
@@ -135,6 +144,11 @@ case "$FIREWALL_TYPE" in
         exit 1
         ;;
 esac
+
+# 开启 IP 转发
+sysctl -w net.ipv4.ip_forward=1 > /dev/null
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf 2>/dev/null || true
+sysctl -p > /dev/null
 
 setup_route_table
 echo "🎉 TUN 模式的防火墙规则已成功应用。"
