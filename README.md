@@ -38,7 +38,7 @@ bash <(curl -sL https://gh-proxy.com/https://raw.githubusercontent.com/qljsyph/D
 
 ### 稳定版(1.11)：  
 tproxy：  
-https://gh-proxy.com/https://raw.githubusercontent.com/qljsyph/sbshell/refs/heads/main/config_template/config_tproxy.json  
+https://gh-proxy.com/https://raw.githubusercontent.com/zhanghoa/singbox-shell/refs/heads/main/config_template/config_tproxy.json  
 
 tun：  
 https://gh-proxy.com/https://raw.githubusercontent.com/qljsyph/sbshell/refs/heads/main/config_template/config_tun.json  
